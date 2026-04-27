@@ -1,0 +1,65 @@
+{
+  "nodes": {
+    "home-manager": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1777258755,
+        "narHash": "sha256-EC07KwADRE2LdIk7vEDyAaD3I0ZUq24T9jQF9L0iEPk=",
+        "owner": "nix-community",
+        "repo": "home-manager",
+        "rev": "7f8bbc93d63401e41368d6ddc46a4f631610fa90",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-community",
+        "repo": "home-manager",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1776877367,
+        "narHash": "sha256-EHq1/OX139R1RvBzOJ0aMRT3xnWyqtHBRUBuO1gFzjI=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "0726a0ecb6d4e08f6adced58726b95db924cef57",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "oac": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1774390579,
+        "narHash": "sha256-H5O08YjxzJMYva1sjMgCl5GTDrx9pR1ELBtO5bqGV/Y=",
+        "owner": "darrenhinde",
+        "repo": "OpenAgentsControl",
+        "rev": "ef3836efd659e451b6dbb8eee7d3213ba39f5aec",
+        "type": "github"
+      },
+      "original": {
+        "owner": "darrenhinde",
+        "repo": "OpenAgentsControl",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "home-manager": "home-manager",
+        "nixpkgs": "nixpkgs",
+        "oac": "oac"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
