@@ -13,6 +13,7 @@ This flake reproduces installer profile logic (`essential`, `developer`, `busine
 - Installs resolved files into `$XDG_CONFIG_HOME/opencode/...` via Home Manager
 - Integrates with `programs.opencode` (auto-enables by default)
 - Adds a default OpenCode policy that allows reading `~/.config/opencode` but requires approval for edits, writes, and shell commands targeting it
+- Adds a default OpenCode policy that allows read/write access to the project `.tmp` directory, while requiring approval for most bash commands targeting it
 
 ## Add as flake input
 
@@ -72,6 +73,7 @@ This flake reproduces installer profile logic (`essential`, `developer`, `busine
 - `rewriteContextReferences` + `contextReferencePath`
 - `installAdditionalPaths` + `additionalPathsPrefix`
 - `allowOpenCodeConfigRead` (default: `true`)
+- `allowTmpDirFullAccess` (default: `true`)
 
 ## Simple customization examples
 
@@ -184,6 +186,41 @@ Disable that default with:
 
 ```nix
 programs.opencode.oac.allowOpenCodeConfigRead = false;
+```
+
+### 7) Allow project `.tmp` read/write access
+
+By default, this module also adds OpenCode permission rules that:
+
+- allow reads to `.tmp`
+- allow edits/writes to `.tmp`
+- require `ask` approval for bash commands targeting `.tmp`
+- allow `mkdir` commands that create `.tmp` or directories inside `.tmp`
+- include rules for both `.tmp` and `.tmp/**`
+
+When enabled, the module adds rules equivalent to:
+
+```nix
+programs.opencode.settings.permission = {
+  read = {
+    ".tmp" = "allow";
+    ".tmp/**" = "allow";
+  };
+  edit = {
+    ".tmp" = "allow";
+    ".tmp/**" = "allow";
+  };
+  bash = {
+    "* .tmp*" = "ask";
+    "mkdir* .tmp*" = "allow";
+  };
+};
+```
+
+Disable that default with:
+
+```nix
+programs.opencode.oac.allowTmpDirFullAccess = false;
 ```
 
 ## Updating

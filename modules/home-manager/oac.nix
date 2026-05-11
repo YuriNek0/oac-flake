@@ -4,6 +4,7 @@ let
   inherit (lib)
     mkEnableOption
     mkIf
+    mkMerge
     mkOption
     mkDefault
     types
@@ -236,6 +237,12 @@ let
     "* ${opencodeConfigDirectory}*"
   ];
 
+  tmpDirPermissionPaths = expandPermissionPaths ".tmp";
+
+  tmpDirBashPatterns = [ "* .tmp*" ];
+
+  tmpDirMkdirPatterns = [ "mkdir* .tmp*" ];
+
   mkPermissionRules =
     patterns: action:
     builtins.listToAttrs (builtins.map (pattern: nameValuePair pattern (mkDefault action)) patterns);
@@ -246,6 +253,14 @@ let
       read = mkPermissionRules opencodeConfigPermissionPaths "allow";
       edit = mkPermissionRules opencodeConfigPermissionPaths "ask";
       bash = mkPermissionRules opencodeConfigBashPatterns "ask";
+    };
+  };
+
+  tmpDirFullAccessSettings = {
+    permission = {
+      read = mkPermissionRules tmpDirPermissionPaths "allow";
+      edit = mkPermissionRules tmpDirPermissionPaths "allow";
+      bash = (mkPermissionRules tmpDirBashPatterns "ask") // (mkPermissionRules tmpDirMkdirPatterns "allow");
     };
   };
 
@@ -340,6 +355,19 @@ in
 
         This allows reads to `~/.config/opencode` while requiring `ask` approval for edits,
         writes, and bash commands that target that path. Set to `false` to disable the policy.
+      '';
+    };
+
+    allowTmpDirFullAccess = mkOption {
+      type = types.bool;
+      default = true;
+      description = ''
+        Add default OpenCode permission rules for the project `.tmp` directory.
+
+        This allows reads, edits, and writes for both `.tmp` and `.tmp/**` while requiring
+        `ask` approval for bash commands that target `.tmp`, except `mkdir` commands used
+        to create `.tmp` directories, which are allowed.
+        Set to `false` to disable the policy.
       '';
     };
 
@@ -549,7 +577,10 @@ in
 
     programs.opencode.enable = mkIf cfg.enableOpencode (mkDefault true);
 
-    programs.opencode.settings = mkIf cfg.allowOpenCodeConfigRead configDirectoryProtectionSettings;
+    programs.opencode.settings = mkMerge [
+      (mkIf cfg.allowOpenCodeConfigRead configDirectoryProtectionSettings)
+      (mkIf cfg.allowTmpDirFullAccess tmpDirFullAccessSettings)
+    ];
 
     xdg.configFile = generatedFileEntries // additionalPathEntries // extraFileEntries // overrideEntries;
   };
