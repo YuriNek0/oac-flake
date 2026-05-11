@@ -223,6 +223,32 @@ let
   contextReferencePath =
     if cfg.contextReferencePath != null then cfg.contextReferencePath else "${config.xdg.configHome}/${withTargetRoot cfg.layout.context}";
 
+  opencodeConfigDirectory = "${config.xdg.configHome}/opencode";
+
+  expandPermissionPaths = path: [ path "${path}/**" ];
+
+  opencodeConfigPermissionPaths =
+    lib.unique (lib.concatMap expandPermissionPaths [ "~/.config/opencode" opencodeConfigDirectory ]);
+
+  opencodeConfigBashPatterns = lib.unique [
+    "* ~/.config/opencode*"
+    "* $HOME/.config/opencode*"
+    "* ${opencodeConfigDirectory}*"
+  ];
+
+  mkPermissionRules =
+    patterns: action:
+    builtins.listToAttrs (builtins.map (pattern: nameValuePair pattern (mkDefault action)) patterns);
+
+  configDirectoryProtectionSettings = {
+    permission = {
+      external_directory = mkPermissionRules opencodeConfigPermissionPaths "allow";
+      read = mkPermissionRules opencodeConfigPermissionPaths "allow";
+      edit = mkPermissionRules opencodeConfigPermissionPaths "ask";
+      bash = mkPermissionRules opencodeConfigBashPatterns "ask";
+    };
+  };
+
   rewriteContextRefs =
     text:
     if cfg.rewriteContextReferences then
@@ -304,6 +330,17 @@ in
       type = types.bool;
       default = true;
       description = "Enable `programs.opencode` automatically when OAC is enabled.";
+    };
+
+    allowOpenCodeConfigRead = mkOption {
+      type = types.bool;
+      default = true;
+      description = ''
+        Add a default OpenCode permission policy for the global OpenCode config directory.
+
+        This allows reads to `~/.config/opencode` while requiring `ask` approval for edits,
+        writes, and bash commands that target that path. Set to `false` to disable the policy.
+      '';
     };
 
     source = mkOption {
@@ -511,6 +548,8 @@ in
         "programs.opencode.oac.profile=advanced includes additionalPaths in registry.json, but installAdditionalPaths=false so they are skipped (matching install.sh behavior).";
 
     programs.opencode.enable = mkIf cfg.enableOpencode (mkDefault true);
+
+    programs.opencode.settings = mkIf cfg.allowOpenCodeConfigRead configDirectoryProtectionSettings;
 
     xdg.configFile = generatedFileEntries // additionalPathEntries // extraFileEntries // overrideEntries;
   };

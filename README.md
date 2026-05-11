@@ -12,6 +12,7 @@ This flake reproduces installer profile logic (`essential`, `developer`, `busine
 - Resolves transitive dependencies
 - Installs resolved files into `$XDG_CONFIG_HOME/opencode/...` via Home Manager
 - Integrates with `programs.opencode` (auto-enables by default)
+- Adds a default OpenCode policy that allows reading `~/.config/opencode` but requires approval for edits, writes, and shell commands targeting it
 
 ## Add as flake input
 
@@ -70,6 +71,7 @@ This flake reproduces installer profile logic (`essential`, `developer`, `busine
 - `extraFiles` / `overrides` (user-provided file/text additions)
 - `rewriteContextReferences` + `contextReferencePath`
 - `installAdditionalPaths` + `additionalPathsPrefix`
+- `allowOpenCodeConfigRead` (default: `true`)
 
 ## Simple customization examples
 
@@ -142,6 +144,46 @@ programs.opencode.oac = {
 
   programs.opencode.oac.source = inputs.oac-fork;
 }
+```
+
+### 6) Allow reading OpenCode's global config directory
+
+By default, this module adds OpenCode permission rules that:
+
+- allow reads to `~/.config/opencode`
+- require `ask` approval for edits/writes to that directory
+- require `ask` approval for shell commands targeting that directory
+
+When enabled, the module adds rules equivalent to:
+
+```nix
+programs.opencode.settings.permission = {
+  external_directory = {
+    "~/.config/opencode" = "allow";
+    "~/.config/opencode/**" = "allow";
+  };
+  read = {
+    "~/.config/opencode" = "allow";
+    "~/.config/opencode/**" = "allow";
+  };
+  edit = {
+    "~/.config/opencode" = "ask";
+    "~/.config/opencode/**" = "ask";
+  };
+  bash = {
+    "* ~/.config/opencode*" = "ask";
+    "* $HOME/.config/opencode*" = "ask";
+  };
+};
+```
+
+This is applied with `mkDefault`, so you can still override the generated OpenCode settings
+with your own `programs.opencode.settings.permission` values if needed.
+
+Disable that default with:
+
+```nix
+programs.opencode.oac.allowOpenCodeConfigRead = false;
 ```
 
 ## Updating
