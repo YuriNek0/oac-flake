@@ -12,7 +12,8 @@ This flake reproduces installer profile logic (`essential`, `developer`, `busine
 - Resolves transitive dependencies
 - Installs resolved files into `$XDG_CONFIG_HOME/opencode/...` via Home Manager
 - Integrates with `programs.opencode` (auto-enables by default)
-- Adds a default OpenCode policy that allows reading `~/.config/opencode` but requires approval for edits, writes, and shell commands targeting it
+- Adds a default OpenCode policy that explicitly denies broader `~/.config` access
+- Can opt back into a narrower `~/.config/opencode` read policy with `programs.opencode.oac.denyHomeConfigRead = false;`
 - Adds a default OpenCode policy that allows read/write access to the project `.tmp` directory, while requiring approval for most bash commands targeting it
 
 ## Add as flake input
@@ -72,7 +73,8 @@ This flake reproduces installer profile logic (`essential`, `developer`, `busine
 - `extraFiles` / `overrides` (user-provided file/text additions)
 - `rewriteContextReferences` + `contextReferencePath`
 - `installAdditionalPaths` + `additionalPathsPrefix`
-- `allowOpenCodeConfigRead` (default: `true`)
+- `allowOpenCodeConfigRead` (default: `true`, merged with `denyHomeConfigRead`)
+- `denyHomeConfigRead` (default: `true`)
 - `allowTmpDirFullAccess` (default: `true`)
 
 ## Simple customization examples
@@ -148,9 +150,58 @@ programs.opencode.oac = {
 }
 ```
 
-### 6) Allow reading OpenCode's global config directory
+### 6) Home config sandbox defaults
 
-By default, this module adds OpenCode permission rules that:
+By default, this module emits both of these OpenCode permission policies:
+
+- a broad deny for `~/.config`
+- a narrower OpenCode-specific override for `~/.config/opencode`
+
+This keeps the broader home config sandbox in place while still allowing OpenCode to read its
+own global config directory.
+
+The broad home-config policy blocks access to the broader home config directory:
+
+- deny external-directory access to `~/.config`
+- deny reads from `~/.config`
+- deny edits/writes to `~/.config`
+- deny shell commands targeting `~/.config`
+
+When enabled, the module adds rules equivalent to:
+
+```nix
+programs.opencode.settings.permission = {
+  external_directory = {
+    "~/.config" = "deny";
+    "~/.config/**" = "deny";
+  };
+  read = {
+    "~/.config" = "deny";
+    "~/.config/**" = "deny";
+  };
+  edit = {
+    "~/.config" = "deny";
+    "~/.config/**" = "deny";
+  };
+  bash = {
+    "* ~/.config*" = "deny";
+    "* $HOME/.config*" = "deny";
+  };
+};
+```
+
+The module also applies matching rules for the resolved `$XDG_CONFIG_HOME` path, so this
+still works when your config directory is not literally `~/.config`.
+
+Disable that default with:
+
+```nix
+programs.opencode.oac.denyHomeConfigRead = false;
+```
+
+### 7) Allow reading OpenCode's global config directory
+
+By default, this module also adds narrower permission rules for OpenCode's own config directory:
 
 - allow reads to `~/.config/opencode`
 - require `ask` approval for edits/writes to that directory
@@ -182,13 +233,32 @@ programs.opencode.settings.permission = {
 This is applied with `mkDefault`, so you can still override the generated OpenCode settings
 with your own `programs.opencode.settings.permission` values if needed.
 
-Disable that default with:
+When both defaults are enabled, the generated config contains both the broad deny and the narrow
+OpenCode-specific rules. This relies on OpenCode's documented granular rule matching behavior:
+rules are evaluated by pattern match, with the last matching rule winning.
+
+Reference: https://opencode.ai/docs/permissions/#granular-rules-object-syntax
+
+That means broader patterns should come first and more specific patterns after them. In this
+module, the `~/.config` deny rules are emitted before the narrower `~/.config/opencode` rules,
+so `~/.config/opencode` remains readable while the rest of `~/.config` stays denied.
+
+Disable just the narrower OpenCode override with:
 
 ```nix
 programs.opencode.oac.allowOpenCodeConfigRead = false;
 ```
 
-### 7) Allow project `.tmp` read/write access
+Disable both home-config policies with:
+
+```nix
+programs.opencode.oac = {
+  denyHomeConfigRead = false;
+  allowOpenCodeConfigRead = false;
+};
+```
+
+### 8) Allow project `.tmp` read/write access
 
 By default, this module also adds OpenCode permission rules that:
 

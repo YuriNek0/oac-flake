@@ -224,7 +224,9 @@ let
   contextReferencePath =
     if cfg.contextReferencePath != null then cfg.contextReferencePath else "${config.xdg.configHome}/${withTargetRoot cfg.layout.context}";
 
-  opencodeConfigDirectory = "${config.xdg.configHome}/opencode";
+  homeConfigDirectory = config.xdg.configHome;
+
+  opencodeConfigDirectory = "${homeConfigDirectory}/opencode";
 
   expandPermissionPaths = path: [ path "${path}/**" ];
 
@@ -235,6 +237,15 @@ let
     "* ~/.config/opencode*"
     "* $HOME/.config/opencode*"
     "* ${opencodeConfigDirectory}*"
+  ];
+
+  homeConfigPermissionPaths =
+    lib.unique (lib.concatMap expandPermissionPaths [ "~/.config" homeConfigDirectory ]);
+
+  homeConfigBashPatterns = lib.unique [
+    "* ~/.config*"
+    "* $HOME/.config*"
+    "* ${homeConfigDirectory}*"
   ];
 
   tmpDirPermissionPaths = expandPermissionPaths ".tmp";
@@ -253,6 +264,15 @@ let
       read = mkPermissionRules opencodeConfigPermissionPaths "allow";
       edit = mkPermissionRules opencodeConfigPermissionPaths "ask";
       bash = mkPermissionRules opencodeConfigBashPatterns "ask";
+    };
+  };
+
+  homeConfigReadDenySettings = {
+    permission = {
+      external_directory = mkPermissionRules homeConfigPermissionPaths "deny";
+      read = mkPermissionRules homeConfigPermissionPaths "deny";
+      edit = mkPermissionRules homeConfigPermissionPaths "deny";
+      bash = mkPermissionRules homeConfigBashPatterns "deny";
     };
   };
 
@@ -355,6 +375,19 @@ in
 
         This allows reads to `~/.config/opencode` while requiring `ask` approval for edits,
         writes, and bash commands that target that path. Set to `false` to disable the policy.
+        This policy is merged with `denyHomeConfigRead` when both are enabled, so the narrower
+        `~/.config/opencode` rules can still override the broader `~/.config` defaults.
+      '';
+    };
+
+    denyHomeConfigRead = mkOption {
+      type = types.bool;
+      default = true;
+      description = ''
+        Add a stricter default OpenCode permission policy for the home config directory.
+
+        This denies external-directory access, reads, edits/writes, and bash commands that
+        target `~/.config` (and the resolved `$XDG_CONFIG_HOME` path).
       '';
     };
 
@@ -578,6 +611,7 @@ in
     programs.opencode.enable = mkIf cfg.enableOpencode (mkDefault true);
 
     programs.opencode.settings = mkMerge [
+      (mkIf cfg.denyHomeConfigRead homeConfigReadDenySettings)
       (mkIf cfg.allowOpenCodeConfigRead configDirectoryProtectionSettings)
       (mkIf cfg.allowTmpDirFullAccess tmpDirFullAccessSettings)
     ];
