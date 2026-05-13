@@ -1,4 +1,6 @@
-{ oacSource ? null }:
+{
+  oacSource ? null,
+}:
 { lib, config, ... }:
 let
   inherit (lib)
@@ -17,10 +19,7 @@ let
   source = if cfg.source != null then cfg.source else oacSource;
 
   registry =
-    if source == null then
-      null
-    else
-      builtins.fromJSON (builtins.readFile "${source}/registry.json");
+    if source == null then null else builtins.fromJSON (builtins.readFile "${source}/registry.json");
 
   components = if registry == null then { } else registry.components;
   contexts = components.contexts or [ ];
@@ -67,7 +66,9 @@ let
   findById =
     items: id:
     let
-      matches = builtins.filter (item: (item.id or null) == id || lib.elem id (item.aliases or [ ])) items;
+      matches = builtins.filter (
+        item: (item.id or null) == id || lib.elem id (item.aliases or [ ])
+      ) items;
     in
     if matches == [ ] then null else builtins.head matches;
 
@@ -76,7 +77,9 @@ let
     let
       pathMd = ".opencode/context/${id}.md";
       pathAsIs = ".opencode/context/${id}";
-      matches = builtins.filter (item: (item.path or "") == pathMd || (item.path or "") == pathAsIs) contexts;
+      matches = builtins.filter (
+        item: (item.path or "") == pathMd || (item.path or "") == pathAsIs
+      ) contexts;
     in
     if matches == [ ] then null else builtins.head matches;
 
@@ -105,8 +108,7 @@ let
       matches = builtins.filter (item: lib.hasPrefix fullPrefix (item.path or "")) contexts;
     in
     builtins.map (
-      item:
-      "context:${stripMdSuffix (lib.removePrefix ".opencode/context/" item.path)}"
+      item: "context:${stripMdSuffix (lib.removePrefix ".opencode/context/" item.path)}"
     ) matches;
 
   expandSpec =
@@ -130,9 +132,17 @@ let
       null;
 
   profileComponents = if selectedProfile == null then [ ] else selectedProfile.components or [ ];
-  profileAdditionalPaths = if selectedProfile == null then [ ] else selectedProfile.additionalPaths or [ ];
+  profileAdditionalPaths =
+    if selectedProfile == null then [ ] else selectedProfile.additionalPaths or [ ];
 
-  initialSpecs = lib.unique (lib.concatMap expandSpec (profileComponents ++ cfg.components));
+  bootstrapContextSpecs = [
+    "context:root-navigation"
+    "context:context-paths-config"
+  ];
+
+  initialSpecs = lib.unique (
+    lib.concatMap expandSpec (profileComponents ++ cfg.components ++ bootstrapContextSpecs)
+  );
 
   dependenciesFor =
     spec:
@@ -144,7 +154,10 @@ let
         let
           parsed = parseSpec dep;
         in
-        if parsed != null && parsed.type == "context" && hasWildcard dep then expandContextPattern parsed.id else [ dep ];
+        if parsed != null && parsed.type == "context" && hasWildcard dep then
+          expandContextPattern parsed.id
+        else
+          [ dep ];
     in
     lib.unique (lib.concatMap expandDependency dependencies);
 
@@ -166,23 +179,53 @@ let
         resolveAllDependencies (seen ++ [ current ]) (deps ++ rest);
 
   resolvedSpecs =
-    if cfg.includeDependencies then
-      resolveAllDependencies [ ] initialSpecs
-    else
-      initialSpecs;
+    if cfg.includeDependencies then resolveAllDependencies [ ] initialSpecs else initialSpecs;
 
   finalSpecs = builtins.filter (spec: !(lib.elem spec cfg.excludeComponents)) resolvedSpecs;
 
-  sourceFiles =
-    lib.unique (
-      lib.concatMap (
-        spec:
-        let
-          component = resolveComponent spec;
-        in
-        if component == null then [ ] else if component ? files then component.files else [ component.path ]
-      ) finalSpecs
-    );
+  requiredBootstrapSpecs = builtins.filter (
+    spec: !(lib.elem spec cfg.excludeComponents)
+  ) bootstrapContextSpecs;
+
+  bootstrapResolvedComponents = builtins.map (spec: {
+    inherit spec;
+    component = resolveComponent spec;
+  }) requiredBootstrapSpecs;
+
+  missingBootstrapComponents = builtins.filter (
+    entry: entry.component == null
+  ) bootstrapResolvedComponents;
+
+  bootstrapExpectedSourceFiles = lib.unique (
+    lib.concatMap (
+      entry:
+      if entry.component == null then
+        [ ]
+      else if entry.component ? files then
+        entry.component.files
+      else
+        [ entry.component.path ]
+    ) bootstrapResolvedComponents
+  );
+
+  sourceFiles = lib.unique (
+    lib.concatMap (
+      spec:
+      let
+        component = resolveComponent spec;
+      in
+      if component == null then
+        [ ]
+      else if component ? files then
+        component.files
+      else
+        [ component.path ]
+    ) finalSpecs
+  );
+
+  missingBootstrapSourcePaths = builtins.filter (
+    path: !(builtins.pathExists "${source}/${path}")
+  ) bootstrapExpectedSourceFiles;
 
   layoutMap = {
     agent = cfg.layout.agent;
@@ -194,18 +237,19 @@ let
     config = cfg.layout.config;
   };
 
-  mapRelativePath =
+  mapSourceRelativePath =
     sourcePath:
-    if builtins.hasAttr sourcePath cfg.pathOverrides then
-      builtins.getAttr sourcePath cfg.pathOverrides
-    else if lib.hasPrefix ".opencode/" sourcePath then
+    if lib.hasPrefix ".opencode/" sourcePath then
       let
         rel = lib.removePrefix ".opencode/" sourcePath;
         segments = lib.splitString "/" rel;
         headSegment = builtins.head segments;
         tailSegments = builtins.tail segments;
         mappedHead =
-          if builtins.hasAttr headSegment layoutMap then builtins.getAttr headSegment layoutMap else headSegment;
+          if builtins.hasAttr headSegment layoutMap then
+            builtins.getAttr headSegment layoutMap
+          else
+            headSegment;
         mappedSegments = if mappedHead == "" then tailSegments else [ mappedHead ] ++ tailSegments;
       in
       lib.concatStringsSep "/" mappedSegments
@@ -214,24 +258,36 @@ let
     else
       "${cfg.layout.config}/${sourcePath}";
 
-  withTargetRoot =
-    rel:
-    if cfg.targetRoot == "" then
-      rel
+  mapRelativePath =
+    sourcePath:
+    if builtins.hasAttr sourcePath cfg.pathOverrides then
+      builtins.getAttr sourcePath cfg.pathOverrides
     else
-      "${cfg.targetRoot}/${rel}";
+      mapSourceRelativePath sourcePath;
+
+  withTargetRoot = rel: if cfg.targetRoot == "" then rel else "${cfg.targetRoot}/${rel}";
 
   contextReferencePath =
-    if cfg.contextReferencePath != null then cfg.contextReferencePath else "${config.xdg.configHome}/${withTargetRoot cfg.layout.context}";
+    if cfg.contextReferencePath != null then
+      cfg.contextReferencePath
+    else
+      "${config.xdg.configHome}/${withTargetRoot cfg.layout.context}";
 
   homeConfigDirectory = config.xdg.configHome;
 
   opencodeConfigDirectory = "${homeConfigDirectory}/opencode";
 
-  expandPermissionPaths = path: [ path "${path}/**" ];
+  expandPermissionPaths = path: [
+    path
+    "${path}/**"
+  ];
 
-  opencodeConfigPermissionPaths =
-    lib.unique (lib.concatMap expandPermissionPaths [ "~/.config/opencode" opencodeConfigDirectory ]);
+  opencodeConfigPermissionPaths = lib.unique (
+    lib.concatMap expandPermissionPaths [
+      "~/.config/opencode"
+      opencodeConfigDirectory
+    ]
+  );
 
   opencodeConfigBashPatterns = lib.unique [
     "* ~/.config/opencode*"
@@ -239,8 +295,12 @@ let
     "* ${opencodeConfigDirectory}*"
   ];
 
-  homeConfigPermissionPaths =
-    lib.unique (lib.concatMap expandPermissionPaths [ "~/.config" homeConfigDirectory ]);
+  homeConfigPermissionPaths = lib.unique (
+    lib.concatMap expandPermissionPaths [
+      "~/.config"
+      homeConfigDirectory
+    ]
+  );
 
   homeConfigBashPatterns = lib.unique [
     "* ~/.config*"
@@ -261,7 +321,6 @@ let
   configDirectoryProtectionSettings = {
     permission = {
       external_directory = mkPermissionRules opencodeConfigPermissionPaths "allow";
-      read = mkPermissionRules opencodeConfigPermissionPaths "allow";
       edit = mkPermissionRules opencodeConfigPermissionPaths "ask";
       bash = mkPermissionRules opencodeConfigBashPatterns "ask";
     };
@@ -270,7 +329,6 @@ let
   homeConfigReadDenySettings = {
     permission = {
       external_directory = mkPermissionRules homeConfigPermissionPaths "deny";
-      read = mkPermissionRules homeConfigPermissionPaths "deny";
       edit = mkPermissionRules homeConfigPermissionPaths "deny";
       bash = mkPermissionRules homeConfigBashPatterns "deny";
     };
@@ -280,7 +338,8 @@ let
     permission = {
       read = mkPermissionRules tmpDirPermissionPaths "allow";
       edit = mkPermissionRules tmpDirPermissionPaths "allow";
-      bash = (mkPermissionRules tmpDirBashPatterns "ask") // (mkPermissionRules tmpDirMkdirPatterns "allow");
+      bash =
+        (mkPermissionRules tmpDirBashPatterns "ask") // (mkPermissionRules tmpDirMkdirPatterns "allow");
     };
   };
 
@@ -300,11 +359,12 @@ let
     else
       text;
 
-  mkGeneratedFileEntry =
+  mkFileEntry =
+    pathMapper:
     sourcePath:
     let
       src = "${source}/${sourcePath}";
-      destRel = mapRelativePath sourcePath;
+      destRel = pathMapper sourcePath;
       key = withTargetRoot destRel;
       fileValue =
         if cfg.rewriteContextReferences then
@@ -318,7 +378,13 @@ let
     in
     nameValuePair key ({ force = cfg.force; } // fileValue);
 
+  mkGeneratedFileEntry = mkFileEntry mapRelativePath;
+
+  mkBootstrapFileEntry = mkFileEntry mapSourceRelativePath;
+
   generatedFileEntries = builtins.listToAttrs (builtins.map mkGeneratedFileEntry sourceFiles);
+
+  bootstrapFileEntries = builtins.listToAttrs (builtins.map mkBootstrapFileEntry bootstrapExpectedSourceFiles);
 
   additionalPaths = if cfg.installAdditionalPaths then profileAdditionalPaths else [ ];
 
@@ -328,10 +394,7 @@ let
       cleanRel = lib.removeSuffix "/" relPath;
       src = "${source}/${cleanRel}";
       destRel =
-        if cfg.additionalPathsPrefix == "" then
-          cleanRel
-        else
-          "${cfg.additionalPathsPrefix}/${cleanRel}";
+        if cfg.additionalPathsPrefix == "" then cleanRel else "${cfg.additionalPathsPrefix}/${cleanRel}";
       key = withTargetRoot destRel;
       base = {
         source = src;
@@ -345,12 +408,9 @@ let
 
   mkUserEntry =
     key: value:
-    nameValuePair
-      (withTargetRoot key)
-      (
-        { force = cfg.force; }
-        // (if lib.isPath value then { source = value; } else { text = value; })
-      );
+    nameValuePair (withTargetRoot key) (
+      { force = cfg.force; } // (if lib.isPath value then { source = value; } else { text = value; })
+    );
 
   extraFileEntries = mapAttrs' mkUserEntry cfg.extraFiles;
   overrideEntries = mapAttrs' mkUserEntry cfg.overrides;
@@ -415,13 +475,15 @@ in
     };
 
     profile = mkOption {
-      type = types.nullOr (types.enum [
-        "essential"
-        "developer"
-        "business"
-        "full"
-        "advanced"
-      ]);
+      type = types.nullOr (
+        types.enum [
+          "essential"
+          "developer"
+          "business"
+          "full"
+          "advanced"
+        ]
+      );
       default = "developer";
       description = ''
         Profile to install from OAC `registry.json`.
@@ -594,18 +656,25 @@ in
       {
         assertion = missingFiles == [ ];
         message =
-          "Some resolved OAC files were not found in source: "
-          + lib.concatStringsSep ", " missingFiles;
+          "Some resolved OAC files were not found in source: " + lib.concatStringsSep ", " missingFiles;
+      }
+      {
+        assertion = missingBootstrapComponents == [ ];
+        message =
+          "Required bootstrap components could not be resolved from registry/source: "
+          + lib.concatStringsSep ", " (builtins.map (entry: entry.spec) missingBootstrapComponents);
+      }
+      {
+        assertion = missingBootstrapSourcePaths == [ ];
+        message =
+          "Resolved bootstrap components reference source paths that do not exist: "
+          + lib.concatStringsSep ", " missingBootstrapSourcePaths;
       }
     ];
 
     warnings =
       lib.optional
-        (
-          cfg.profile == "advanced"
-          && profileAdditionalPaths != [ ]
-          && !cfg.installAdditionalPaths
-        )
+        (cfg.profile == "advanced" && profileAdditionalPaths != [ ] && !cfg.installAdditionalPaths)
         "programs.opencode.oac.profile=advanced includes additionalPaths in registry.json, but installAdditionalPaths=false so they are skipped (matching install.sh behavior).";
 
     programs.opencode.enable = mkIf cfg.enableOpencode (mkDefault true);
@@ -616,6 +685,7 @@ in
       (mkIf cfg.allowTmpDirFullAccess tmpDirFullAccessSettings)
     ];
 
-    xdg.configFile = generatedFileEntries // additionalPathEntries // extraFileEntries // overrideEntries;
+    xdg.configFile =
+      generatedFileEntries // bootstrapFileEntries // additionalPathEntries // extraFileEntries // overrideEntries;
   };
 }

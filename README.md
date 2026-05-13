@@ -10,6 +10,7 @@ This flake reproduces installer profile logic (`essential`, `developer`, `busine
 - Reads `registry.json`
 - Expands profile components + `context:*` wildcards
 - Resolves transitive dependencies
+- Emits bootstrap context specs (`context:root-navigation` and `context:context-paths-config`) from the registry so context discovery works immediately
 - Installs resolved files into `$XDG_CONFIG_HOME/opencode/...` via Home Manager
 - Integrates with `programs.opencode` (auto-enables by default)
 - Adds a default OpenCode policy that explicitly denies broader `~/.config` access
@@ -66,6 +67,9 @@ This flake reproduces installer profile logic (`essential`, `developer`, `busine
 - `components` (list of extra component specs)
 - `excludeComponents` (list of specs to remove)
 - `includeDependencies` (bool)
+- bootstrap context specs `context:root-navigation` and `context:context-paths-config` are always included unless explicitly excluded
+- bootstrap files are installed at canonical context paths and bypass `pathOverrides` so discovery files cannot be relocated accidentally
+- bootstrap assertions are component-driven: they validate registry/source resolution and that each resolved source path exists under `${source}`
 - `source` (optional alternate OAC source path)
 - `targetRoot` (default: `opencode`)
 - `layout.*` path segment remapping (`agent`, `command`, `context`, `tool`, `plugin`, `skills`, `config`)
@@ -76,6 +80,32 @@ This flake reproduces installer profile logic (`essential`, `developer`, `busine
 - `allowOpenCodeConfigRead` (default: `true`, merged with `denyHomeConfigRead`)
 - `denyHomeConfigRead` (default: `true`)
 - `allowTmpDirFullAccess` (default: `true`)
+
+## Bootstrap context files
+
+The module installs two registry-resolved bootstrap context files so OpenCode agents can discover
+the context tree immediately:
+
+- `$XDG_CONFIG_HOME/opencode/context/navigation.md`
+- `$XDG_CONFIG_HOME/opencode/context/core/config/paths.json`
+
+These files follow `targetRoot` and `layout.context`, but intentionally do **not** honor
+`pathOverrides`. This keeps required context discovery files at their canonical locations.
+User-provided `extraFiles` and `overrides` still merge after generated and bootstrap files, so
+you can replace content at the final target path when needed.
+
+## Installer compatibility
+
+This module mirrors upstream `install.sh` registry behavior for profile expansion,
+`context:*` wildcard expansion, transitive dependency resolution, non-`.md` context IDs such as
+`core/config/paths.json`, and multi-file components.
+
+Intentional differences from `install.sh`:
+
+- Bootstrap contexts are always emitted by this module; the shell installer receives them only
+  when selected components or dependencies include them.
+- `advanced` profile `additionalPaths` are opt-in with `installAdditionalPaths`; the shell
+  installer reports those paths for manual download.
 
 ## Simple customization examples
 
