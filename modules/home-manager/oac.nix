@@ -321,6 +321,7 @@ let
   configDirectoryProtectionSettings = {
     permission = {
       external_directory = mkPermissionRules opencodeConfigPermissionPaths "allow";
+      read = mkPermissionRules opencodeConfigPermissionPaths "allow";
       edit = mkPermissionRules opencodeConfigPermissionPaths "ask";
       bash = mkPermissionRules opencodeConfigBashPatterns "ask";
     };
@@ -329,6 +330,7 @@ let
   homeConfigReadDenySettings = {
     permission = {
       external_directory = mkPermissionRules homeConfigPermissionPaths "deny";
+      read = mkPermissionRules homeConfigPermissionPaths "deny";
       edit = mkPermissionRules homeConfigPermissionPaths "deny";
       bash = mkPermissionRules homeConfigBashPatterns "deny";
     };
@@ -360,8 +362,7 @@ let
       text;
 
   mkFileEntry =
-    pathMapper:
-    sourcePath:
+    pathMapper: sourcePath:
     let
       src = "${source}/${sourcePath}";
       destRel = pathMapper sourcePath;
@@ -382,9 +383,11 @@ let
 
   mkBootstrapFileEntry = mkFileEntry mapSourceRelativePath;
 
-  generatedFileEntries = builtins.listToAttrs (builtins.map mkGeneratedFileEntry sourceFiles);
+  generatedFileEntries = builtins.listToAttrs (map mkGeneratedFileEntry sourceFiles);
 
-  bootstrapFileEntries = builtins.listToAttrs (builtins.map mkBootstrapFileEntry bootstrapExpectedSourceFiles);
+  bootstrapFileEntries = builtins.listToAttrs (
+    builtins.map mkBootstrapFileEntry bootstrapExpectedSourceFiles
+  );
 
   additionalPaths = if cfg.installAdditionalPaths then profileAdditionalPaths else [ ];
 
@@ -404,7 +407,7 @@ let
     in
     nameValuePair key (base // recursiveAttrs);
 
-  additionalPathEntries = builtins.listToAttrs (builtins.map mkAdditionalPathEntry additionalPaths);
+  additionalPathEntries = builtins.listToAttrs (map mkAdditionalPathEntry additionalPaths);
 
   mkUserEntry =
     key: value:
@@ -662,7 +665,7 @@ in
         assertion = missingBootstrapComponents == [ ];
         message =
           "Required bootstrap components could not be resolved from registry/source: "
-          + lib.concatStringsSep ", " (builtins.map (entry: entry.spec) missingBootstrapComponents);
+          + lib.concatStringsSep ", " (map (entry: entry.spec) missingBootstrapComponents);
       }
       {
         assertion = missingBootstrapSourcePaths == [ ];
@@ -686,6 +689,10 @@ in
     ];
 
     xdg.configFile =
-      generatedFileEntries // bootstrapFileEntries // additionalPathEntries // extraFileEntries // overrideEntries;
+      generatedFileEntries
+      // bootstrapFileEntries
+      // additionalPathEntries
+      // extraFileEntries
+      // overrideEntries;
   };
 }
