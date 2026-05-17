@@ -310,9 +310,16 @@ let
 
   tmpDirPermissionPaths = expandPermissionPaths ".tmp";
 
-  tmpDirBashPatterns = [ "* .tmp*" ];
-
-  tmpDirMkdirPatterns = [ "mkdir* .tmp*" ];
+  tmpDirBashPatterns = [
+    "ls .tmp*"
+    "ls * .tmp*"
+    "ls \".tmp*"
+    "ls * \".tmp*"
+    "mkdir * tmp*"
+    "mkdir tmp*"
+    "mkdir \".tmp*"
+    "mkdir * \".tmp*"
+  ];
 
   mkPermissionRules =
     patterns: action:
@@ -340,8 +347,7 @@ let
     permission = {
       read = mkPermissionRules tmpDirPermissionPaths "allow";
       edit = mkPermissionRules tmpDirPermissionPaths "allow";
-      bash =
-        (mkPermissionRules tmpDirBashPatterns "ask") // (mkPermissionRules tmpDirMkdirPatterns "allow");
+      bash = mkPermissionRules tmpDirBashPatterns "allow";
     };
   };
 
